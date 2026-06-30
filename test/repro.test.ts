@@ -128,8 +128,26 @@ test("(B)  INSERT … SELECT wrapping CTE + JSON_TABLE crashes Dolt", async () =
     expect((rows as any[])[0]!.cnt).toBe(15)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    expect(msg).toMatch(/Connection lost|closed|ECONNRESET|invalid connection|cannot enqueue/)
-    // Reconnect for subsequent tests
+    // BUG: Dolt severs the MySQL connection. mysql2 reports:
+    //   "Cannot enqueue Query after fatal error"
+    // because the server closed the socket mid-INSERT.
+    if (/Cannot enqueue/.test(msg)) {
+      // Expected bug — connection was severed, no rows committed
+    } else {
+      // Unexpected — query may have partially executed; verify no corruption
+      try {
+        const [rows] = await conn.query<RowDataPacket[]>(
+          "SELECT COUNT(*) AS cnt FROM skill_summary",
+        )
+        expect((rows as any[])[0]!.cnt).toBe(0)
+      } catch {
+        // Connection may already be dead
+      }
+    }
+    expect(msg).toMatch(/Cannot enqueue/)
+  } finally {
+    // Ensure connection is re-established for subsequent tests regardless
+    // of whether the catch expect passed or the INSERT succeeded
     try { await conn.ping() } catch {
       conn = await mysql.createConnection({ host: HOST, port: PORT, user: "root" })
       await conn.query(`USE \`${DB}\``)
