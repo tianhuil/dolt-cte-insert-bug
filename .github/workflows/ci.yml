@@ -1,0 +1,33 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    services:
+      dolt:
+        image: dolthub/dolt-sql-server:latest
+        ports:
+          - 13307:3306
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Wait for Dolt to accept connections
+        run: |
+          for i in $(seq 1 30); do
+            if timeout 1 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/13307" 2>/dev/null; then
+              echo "Dolt is ready"
+              exit 0
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          echo "Dolt did not become ready in time"
+          exit 1
+
+      - run: bun install
+      - run: bun test
