@@ -9,6 +9,8 @@ jobs:
         image: dolthub/dolt-sql-server:latest
         ports:
           - 13307:3306
+        env:
+          DOLT_ROOT_HOST: "%"
     steps:
       - uses: actions/checkout@v4
 
